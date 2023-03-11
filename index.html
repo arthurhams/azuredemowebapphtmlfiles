@@ -1,0 +1,24 @@
+<html>
+<body>
+    Welcome to this Single Page Application
+    <br />
+    <br />
+    <button onclick="PostAPI()" >Call API</button>
+
+    <script language="javascript">
+        function PostAPI() {
+            var xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function () {
+                if (this.readyState == 4 && this.status == 200) {
+                    alert(this.responseText);
+                }
+            };
+            xhttp.open("POST", { functionurl }, true);
+            xhttp.setRequestHeader("Content-type", "application/json");
+    xhttp.send("{\"someitem\":\"somevalue\"}");
+        }
+    </script>
+
+
+</body>
+</html>
