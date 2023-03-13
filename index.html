@@ -1,24 +1,359 @@
-<html>
+<!doctype html>
+<html lang="en">
+<head>
+    <nouse àttr="https://docs.microsoft.com/en-us/azure/api-management/howto-protect-backend-frontend-azure-ad-b2c"></nouse>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BmbxuPwQa2lc/FVzBcNJ7UAyJxM6wuqIj61tLrc4wSX0szH/Ev+nYRRuWlolflfl" crossorigin="anonymous">
+    <script type="text/javascript" src="https://alcdn.msauth.net/browser/2.11.1/js/msal-browser.min.js"></script>
+</head>
 <body>
-    Welcome to this Single Page Application
-    <br />
-    <br />
-    <button onclick="PostAPI()" >Call API</button>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-12">
+                <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+                    <div class="container-fluid">
+                        <a class="navbar-brand" href="#">Azure Demo Web App - Functions, AAD B2C, SignalR, App Config</a>
+                        <div class="navbar-nav">
+                            <button class="btn btn-success" id="signinbtn" onClick="login()">Sign In</button>
+                            <div id="username"></div>
+                        </div>
+                    </div>
+                </nav>
+            </div>
+        </div>
+        <div id="portal">
+            <div class="row" id="shops">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div id="message"></div>
+                        <div class="card-body">
+                            <div id="progress" class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <input type="hidden" id="username" value="johndo" />
+                            <!-- button onclick="SendMessage2('BERICHT!!')">SEND!</!button -->
+                            <table border="0">
+                                <tr><td>Satellite</td><td><input id="Satellite" size="50" value="Sentinel2" /></td></tr>
+                                <tr>
+                                    <td>Coordinates</td>
+                                    <td>
+                                        <input id="Coordinate1" size="50" value="50.803721015,3.31497114423" /><br />
+                                        <input id="Coordinate2" size="50" value="53.5104033474,7.0920" /><br />
 
-    <script language="javascript">
-        function PostAPI() {
-            var xhttp = new XMLHttpRequest();
-            xhttp.onreadystatechange = function () {
-                if (this.readyState == 4 && this.status == 200) {
-                    alert(this.responseText);
+
+                                        <input type="button" value="Select Coordinates"
+                                               onclick="window.open('SelectCoordinates.html',
+        'Select your Coordinates', 'height=600,width=600,left=100,top=100,resizable=yes,scrollbars=yes,toolbar=yes,menubar=no,location=no,directories=no, status=yes');">
+                                    </td>
+                                </tr>
+                                <tr><td>DateRange Start</td><td><input id="DateRangeStart" size="50" value="2022-01-01" /></td></tr>
+                                <tr><td>DateRange End</td><td><input id="DateRangeEnd" size="50" value="2022-02-22" /></td></tr>
+                                <tr>
+                                    <td>PostProcessing</td>
+                                    <td>
+                                        <select id="PostProcessing">
+                                            <option value="NDVI">NDVI</option>
+                                        </select>
+                                        <!-- input id="PostProcessing" size="50" value="NDVI" / -->
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>CloudCover </td>
+                                    <td>
+                                        <input type="range" id="CloudCoverRange" min="1" max="100" oninput="document.getElementById('CloudCover').value = this.value;" value="10">&nbsp;
+                                        <input id="CloudCover" size="4" value="10" />
+                                    </td>
+                                </tr>
+
+                            </table>
+                            <button onclick="ProcessImage();">Process Image</button>
+                        </div>
+                    </div>
+                    <div class="card" style="text-align: center">
+                        <div id="statusTable"></div>
+                        <div id="nexttableupdate"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!--script language="javascript" src="Functions.js"></!--script -->
+
+        <script lang="javascript">
+            if (getCookie("username") != "") {
+                document.getElementById("username").value = getCookie("username");
+            }
+            else {
+
+                var username = Math.random().toString().substr(2, 6);
+                setCookie("username", username, 30);
+                document.getElementById("username").value = username;
+
+            }
+
+            // Just change the values in this config object ONLY.
+            var config = {
+                msal: {
+                    auth: {
+                        clientId: "6e9700c7-e22b-4893-aa97-c3fa0d4f401c", // This is the client ID of your FRONTEND application that you registered with the SPA type in AAD B2C
+                        // Formatted as https://{b2ctenantname}.b2clogin.com/tfp/{b2ctenantguid or full tenant name including onmicrosoft.com}/{signuporinpolicyname}
+            authority: "https://mynewb2ctenantarhinmsdn.b2clogin.com/tfp/mynewb2ctenantarhinmsdn.onmicrosoft.com/B2C_1_signin",
+                        //redirectUri: "https://localhost:44343/",
+                        redirectUri: "https://pcdemospa.z6.web.core.windows.net/",// The storage hosting address of the SPA, a web-enabled v2 storage account - recorded earlier as the Primary Endpoint.
+                    knownAuthorities: ["mynewb2ctenantarhinmsdn.b2clogin.com"] // {b2ctenantname}.b2clogin.com
+                    },
+                    cache: {
+                        cacheLocation: "sessionStorage",
+                        storeAuthStateInCookie: true
+                    }
+                },
+                api: {
+        scopes: ["https://mynewb2ctenantarhinmsdn.onmicrosoft.com/6e9700c7-e22b-4893-aa97-c3fa0d4f401c/CallBackend"], // The scope that we request for the API from B2C, this should be the backend API scope, with the full URI.
+                    //sendmessage: "http://localhost:7071/api/SendMessage?name="
+                    sendmessage: "https://pcdemofunctions.azurewebsites.net/api/SendMessage?name=", // "http://localhost:7071/api/SendMessage" //The location that we will call for the backend api, this should be hosted in API Management, suffixed with the name of the API operation (in the sample this is '/hello').
+                    postjoburl: "https://plancomfunc.azurewebsites.net/api/httptrigger-planetarycomputer"
                 }
-            };
-            xhttp.open("POST", { functionurl }, true);
-            xhttp.setRequestHeader("Content-type", "application/json");
-    xhttp.send("{\"someitem\":\"somevalue\"}");
-        }
-    </script>
+            }
+            //document.getElementById("portal").hidden = true;
+            document.getElementById("progress").hidden = true;
+            const myMSALObj = new msal.PublicClientApplication(config.msal);
+            myMSALObj.handleRedirectPromise().then((tokenResponse) => {
+                if (tokenResponse !== null) {
+                    console.log(tokenResponse.account);
+                    var username = tokenResponse.account.username.substring(0, 6).replace('.', '');
+                    setCookie("username", username, 30);
+                    document.getElementById("username").value = username;
+
+                    document.getElementById("message").innerHTML = "Welcome, " + tokenResponse.account.username;
+                    document.getElementById("signinbtn").hidden = true;
+                    document.getElementById("portal").hidden = false;
+
+                    let messages = document.querySelector('#SignalRmessages');
+                    const apiBaseUrl = "https://pcdemofunctions.azurewebsites.net";
+                    //const apiBaseUrl = "http://localhost:7071";//;//"";; // window.location.origin;
+                    //alert(tokenResponse.accessToken);
+                    const connection = new signalR.HubConnectionBuilder()
+                        .withUrl(apiBaseUrl + '/api', {
+                            accessTokenFactory: () => {
+                                return tokenResponse.accessToken;
+                            }//, withCredentials : true
+                        }
+                            //{headers: { "username": tokenResponse.account.username }}
+                        )
+
+                        .configureLogging(signalR.LogLevel.Information)
+                        .build();
+                    connection.on('newMessage', (message) => {
+                        if (message.substring(0, 6) != '<table')
+                            AppendMessage(message);
+                        else {
+                            UpdateStatusTable(message);
+                            startCountDown(4, document.getElementById("nexttableupdate"))
+                        }
+                    });
+
+                    connection.start()
+                        .catch(console.error);
 
 
+                    //getAPIData();
+                    //loadShops();
+                }
+            }).catch((error) => {
+                console.log("Error Signing in:" + error);
+            });
+            function login() {
+                try {
+                    myMSALObj.loginRedirect({ scopes: config.api.scopes });
+                } catch (err) { console.log(err); }
+            }
+
+            function AppendMessage(message) {
+                document.getElementById("SignalRmessages").innerHTML = message + "<br /> " + document.getElementById("SignalRmessages").innerHTML;
+            }
+
+            function UpdateStatusTable(message) {
+                document.getElementById("statusTable").innerHTML = message;
+            }
+
+            function getAccount() {
+                var accounts = myMSALObj.getAllAccounts();
+                if (!accounts || accounts.length === 0) {
+                    return null;
+                } else {
+                    return accounts[0];
+                }
+            }
+
+            function paddedFormat(num) {
+                return num < 10 ? "0" + num : num;
+            }
+
+            function startCountDown(duration, element) {
+
+                let secondsRemaining = duration;
+                let min = 0;
+                let sec = 0;
+
+                let countInterval = setInterval(function () {
+
+                    min = parseInt(secondsRemaining / 60);
+                    sec = parseInt(secondsRemaining % 60);
+
+                    element.textContent = `Nodepool information will be updated in:  ${paddedFormat(min)}:${paddedFormat(sec)}`;
+
+                    secondsRemaining = secondsRemaining - 1;
+                    if (secondsRemaining < 0) { clearInterval(countInterval) };
+
+                }, 1000);
+            }
+
+
+            function setCookie(cname, cvalue, exdays) {
+                const d = new Date();
+                d.setTime(d.getTime() + (exdays * 24 * 60 * 60 * 1000));
+                let expires = "expires=" + d.toUTCString();
+                document.cookie = cname + "=" + cvalue + ";" + expires + ";path=/";
+            }
+
+            function getCookie(cname) {
+                let name = cname + "=";
+                let ca = document.cookie.split(';');
+                for (let i = 0; i < ca.length; i++) {
+                    let c = ca[i];
+                    while (c.charAt(0) == ' ') {
+                        c = c.substring(1);
+                    }
+                    if (c.indexOf(name) == 0) {
+                        return c.substring(name.length, c.length);
+                    }
+                }
+                return "";
+            }
+
+
+        </script>
+        <div id="SignalRmessages"></div>
+        <!--script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.js"></!--script -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/3.1.7/signalr.min.js"></script>
+        <script>
+
+
+            function SendMessage(test) {
+                alert('SendMessage');
+                fetch(api.sendmessage, {
+                    method: 'post',
+                    credentials: 'include',
+                    //body: JSON.stringify(body),
+                    headers: new Headers({ 'Content-Type': 'text/json' })
+                })
+                    .then(function (resp) {
+                        if (resp.status === 200) {
+                            alert('Message sent')
+                        }
+                    }
+                    );
+            }
+
+            function SendMessage2(message) {
+                document.getElementById("progress").hidden = false;
+                document.getElementById("message").innerHTML = "Calling backend ... "
+                var message = document.getElementById("messagetext").value;
+                //document.getElementById("cardheader").classList.remove('bg-success', 'bg-warning', 'bg-danger');
+                myMSALObj.acquireTokenSilent({ scopes: config.api.scopes, account: getAccount() }).then(tokenResponse => {
+                    const headers = new Headers();
+                    //alert("SendMessage2: " + tokenResponse.accessToken);
+                    headers.append("Authorization", `Bearer ${tokenResponse.accessToken}`);
+                    headers.append("Content-Type", "text/plain;charset=UTF-8");
+
+                    //alert(`Bearer ${tokenResponse.accessToken}`)
+                    //headers.append("x-ms-client-principal-name", `${tokenResponse.account.username}`);
+
+                    fetch(config.api.sendmessage + message, { method: "GET", headers: headers })
+                        .then(async (response) => {
+                            if (!response.ok) {
+                            }
+                            else {
+                                //document.getElementById("cardheader").classList.add('bg-success');
+                                document.getElementById("message").innerHTML = "";
+                                var resp = await response.text();
+
+
+                            }
+                        }).catch(async (error) => {
+                            //document.getElementById("cardheader").classList.add('bg-danger');
+                            document.getElementById("message").innerHTML = "Error: " + error;
+                        });
+                }).catch(error => {
+                    alert("Error Acquiring Token Silently: " + error);
+                    //return myMSALObj.acquireTokenRedirect({ scopes: config.api.scopes, forceRefresh: false })
+                });
+                document.getElementById("progress").hidden = true;
+            }
+
+
+            function ProcessImage() {
+                var url = createURL();
+                //alert(url);
+                //return;
+                fetch(url, { method: "GET" })
+                    .then(async (response) => {
+                        if (!response.ok) {
+                            AppendMessage("Error processing image: " + response.text);
+                        }
+                        else {
+                            //document.getElementById("cardheader").classList.add('bg-success');
+                            //document.getElementById("message").innerHTML = "";
+                            var resp = await response.text();
+                            AppendMessage(resp);
+
+                        }
+                    }).catch(async (error) => {
+                        //document.getElementById("cardheader").classList.add('bg-danger');
+                        AppendMessage("Error processing message: " + error);
+                    });
+            }
+            function createJSON() {
+                var json = "{";
+                json += "";
+                json += "}";
+            }
+
+            function createURL() {
+                var url = config.api.postjoburl;//"https://remkofunction1"
+                url += "?name=" + document.getElementById("username").value;
+                url += "&Satellite=" + document.getElementById("Satellite").value;
+                url += "&Coordinates=" + document.getElementById("Coordinate1").value + "," + document.getElementById("Coordinate2").value;
+                url += "&DateRangeStart=" + document.getElementById("DateRangeStart").value;
+                url += "&DateRangeEnd=" + document.getElementById("DateRangeEnd").value;
+                url += "&PostProcessing=" + document.getElementById("PostProcessing").value;
+                url += "&CloudCover=" + document.getElementById("CloudCover").value;
+                url += "&JobID=pc_job2";
+
+                return url;
+            }
+
+            function getAccount() {
+                var accounts = myMSALObj.getAllAccounts();
+                if (!accounts || accounts.length === 0) {
+                    return null;
+                } else {
+                    return accounts[0];
+                }
+            }
+
+            function PostAPI() {
+                var xhttp = new XMLHttpRequest();
+                xhttp.onreadystatechange = function () {
+                    if (this.readyState == 4 && this.status == 200) {
+                        alert(this.responseText);
+                    }
+                };
+                xhttp.open("POST", { functionurl }, true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.send("{\"someitem\":\"somevalue\"}");
+            }
+        </script>
 </body>
 </html>
